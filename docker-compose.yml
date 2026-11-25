@@ -1,0 +1,95 @@
+# Estados APIS - stack de Docker Swarm (Portainer)
+# Codigo e imagen: https://github.com/IntegracionesFlexxus/estados_apis (Dockerfile en la raiz)
+#
+# Variables del stack (Portainer > Stack > Environment variables):
+#   IMAGE            imagen de Docker Hub, ej. usuario/estados_apis:1.1.0   (obligatoria)
+#   NODE             constraint de placement, ej. node.hostname==worker98   (obligatoria)
+#   LOKI_URL         URL de Loki para los logs                              (obligatoria)
+#   APP_PORT         puerto publicado en el nodo                            (default 3255)
+#   TRAEFIK_NETWORK  red overlay de Traefik                                 (default traefik)
+#   Solo si se publica con dominio por Traefik:
+#   TRAEFIK_ENABLE=true, DOMAIN, TRAEFIK_ENTRYPOINT (default websecure), TRAEFIK_CERTRESOLVER (default letsencrypt)
+#
+# Secrets externos (crear antes del primer deploy): ver README.md
+
+version: "3.9"
+
+services:
+  app:
+    image: ${IMAGE:?Definir IMAGE (usuario/estados_apis:tag)}
+    ports:
+      - "${APP_PORT:-3255}:3255"
+    environment:
+      NODE_ENV: production
+      PORT: "3255"
+      TZ: America/Argentina/Buenos_Aires
+      FBHOST_SAR: 192.168.121.178
+      FBPORT_SAR: "3050"
+      FBDATABASE_SAR: //SAR//Base//DBADMINISTRADOR.GDB
+      FBUSER_SAR: SYSDBA
+      SQLITE_PATH: /app/data/estados_apis.db
+    volumes:
+      # Base SQLite. El placement por NODE mantiene el servicio en el nodo donde esta el volumen
+      - estados-apis-data:/app/data
+    secrets:
+      - source: estados_apis_bot_token
+        target: BOT_TOKEN
+      - source: estados_apis_bot_chat_id
+        target: BOT_CHAT_ID
+      - source: estados_apis_fb_password
+        target: FBPASSWORD_SAR
+      - source: estados_apis_gmail
+        target: GMAIL
+    logging:
+      driver: loki
+      options:
+        loki-url: ${LOKI_URL:?Definir LOKI_URL}
+    networks:
+      - traefik
+    deploy:
+      placement:
+        constraints: ["${NODE:?Definir NODE (ej. node.hostname==worker98)}"]
+      # 1 sola replica: SQLite es un archivo local y el bot de Telegram no admite polling desde 2 procesos
+      replicas: 1
+      update_config:
+        # stop-first: no puede haber 2 contenedores escribiendo el mismo archivo SQLite
+        order: stop-first
+        failure_action: rollback
+        delay: 10s
+      rollback_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 10s
+      resources:
+        limits:
+          memory: 512M
+      labels:
+        # Apagado por defecto: se accede por IP:APP_PORT como el resto de los servicios del nodo
+        - traefik.enable=${TRAEFIK_ENABLE:-false}
+        - traefik.http.routers.estados-apis.rule=Host(`${DOMAIN:-estadosapis.local}`)
+        - traefik.http.routers.estados-apis.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+        - traefik.http.routers.estados-apis.tls=true
+        - traefik.http.routers.estados-apis.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}
+        - traefik.http.services.estados-apis.loadbalancer.server.port=3255
+        # Traefik v2 usa traefik.docker.network, v3 usa traefik.swarm.network
+        - traefik.docker.network=${TRAEFIK_NETWORK:-traefik}
+        - traefik.swarm.network=${TRAEFIK_NETWORK:-traefik}
+
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}
+
+volumes:
+  estados-apis-data:
+
+secrets:
+  estados_apis_bot_token:
+    external: true
+  estados_apis_bot_chat_id:
+    external: true
+  estados_apis_fb_password:
+    external: true
+  estados_apis_gmail:
+    external: true
