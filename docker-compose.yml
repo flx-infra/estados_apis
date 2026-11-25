@@ -26,7 +26,7 @@ services:
       FBHOST_SAR: 192.168.121.178
       FBPORT_SAR: "3050"
       FBDATABASE_SAR: //SAR//Base//DBADMINISTRADOR.GDB
-      FBUSER_SAR: SYSDBA
+      FBUSER_SAR: INT_ESTADOSAPIS
       SQLITE_PATH: /app/data/estados_apis.db
     volumes:
       # Base SQLite. El placement por NODE mantiene el servicio en el nodo donde esta el volumen
