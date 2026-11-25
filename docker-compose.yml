@@ -16,7 +16,7 @@ version: "3.9"
 
 services:
   app:
-    image: ${IMAGE:?Definir IMAGE (usuario/estados_apis:tag)}
+    image: fabreguesm/estados_apis:1.0.0
     ports:
       - "${APP_PORT:-3255}:3255"
     environment:
